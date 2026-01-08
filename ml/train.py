@@ -40,13 +40,23 @@ def parse_tags(tag_str: str) -> str:
 
 df["tags_text"] = df["tags"].apply(parse_tags)
 
+df["title_len"] = df["title"].fillna("").astype(str).str.len()
+df["body_len"] = df["body"].fillna("").astype(str).str.len()
+df["num_tags"] = df["tags_text"].apply(lambda s: 0 if not s else len(s.split()))
+df["has_code_block"] = df["body"].fillna("").astype(str).str.contains("<code>", regex=False).astype(int)
+
 meta_cols = ["comment_count", "favorite_count", "hour", "weekday", "score", "view_count"]
 X_meta = df[meta_cols].copy()
 
 X_text = df["clean_text"]
 X_tags = df["tags_text"]
-X_time = df[["hour", "weekday"]]
+X_time = df[["hour", "weekday", "title_len", "body_len", "num_tags", "has_code_block"]]
 y = df["answered"]
+
+
+
+X_time = df[["hour", "weekday", "title_len", "body_len", "num_tags", "has_code_block"]]
+
 
 # train-test split 
 
@@ -79,6 +89,7 @@ text_vectorizer = TfidfVectorizer(
     stop_words="english",
     min_df=2
 )
+
 X_text_train_tfidf = text_vectorizer.fit_transform(X_text_train)
 X_text_test_tfidf = text_vectorizer.transform(X_text_test)
 
@@ -87,7 +98,9 @@ X_text_test_tfidf = text_vectorizer.transform(X_text_test)
 tag_vectorizer = TfidfVectorizer(
     max_features=2000,
     ngram_range=(1, 1),
-    lowercase=True
+    lowercase=True,
+    use_idf=False,
+    norm="l2"
 )
 X_tags_train_tfidf = tag_vectorizer.fit_transform(X_tags_train)
 X_tags_test_tfidf = tag_vectorizer.transform(X_tags_test)
@@ -114,7 +127,6 @@ model.fit(X_train_final, y_train)
 
 y_probs = model.predict_proba(X_test_final)[:, 1]
 y_pred = (y_probs >= 0.5).astype(int)
-
 print(classification_report(y_test, y_pred))
 print(confusion_matrix(y_test, y_pred))
 
@@ -128,7 +140,7 @@ tag_names = tag_vectorizer.get_feature_names_out()
 
 text_dim = len(text_names)
 tag_dim = len(tag_names)
-time_dim = 2  # hour, weekday
+time_dim = 6
 
 # slice coef blocks
 text_coefs = coefs[:text_dim]
@@ -157,3 +169,5 @@ print(tag_names[top_tag_neg])
 
 print("\nTime feature weights (hour, weekday):")
 print(time_coefs)
+
+
