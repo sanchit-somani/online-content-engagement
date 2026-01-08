@@ -1,5 +1,7 @@
 import pandas as pd
 import numpy as np
+import joblib
+from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
@@ -169,5 +171,21 @@ print(tag_names[top_tag_neg])
 
 print("\nTime feature weights (hour, weekday):")
 print(time_coefs)
+
+
+ARTIFACT_DIR = Path("artifacts")
+ARTIFACT_DIR.mkdir(exist_ok=True)
+
+bundle = {
+    "model": model,
+    "text_vectorizer": text_vectorizer,
+    "tag_vectorizer": tag_vectorizer,
+    "scaler": scaler,
+    "threshold": 0.6,
+    "meta_cols": ["hour", "weekday", "title_len", "body_len", "num_tags", "has_code_block"],
+}
+
+joblib.dump(bundle, ARTIFACT_DIR / "pipeline.joblib")
+print("Saved artifacts to artifacts/pipeline.joblib")
 
 
