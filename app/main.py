@@ -7,6 +7,7 @@ from pathlib import Path
 from scipy.sparse import hstack, csr_matrix
 from sklearn.preprocessing import StandardScaler
 from ml.preprocess import clean_text
+from ml.quality import quality_features, quality_score
 
 app = FastAPI(title="Stack Overflow Engagement Predictor")
 
@@ -24,21 +25,39 @@ def tags_to_string(tags):
     # tags arrive as ["python","pandas"] -> "python pandas"
     return " ".join([t.strip().lower() for t in tags if t and t.strip()])
 
-def build_meta(req: PredictRequest) -> np.ndarray:
+
+def build_meta(req: PredictRequest, meta_cols: list[str]) -> np.ndarray:
     title = req.title or ""
     body = req.body or ""
+    tags = req.tags or []
 
+    # caps must match training
     title_len = min(len(title), 200)
     body_len = min(len(body), 2000)
-    num_tags = len(req.tags) if req.tags else 0
-    has_code_block = 1 if "<code>" in (body or "").lower() else 0
+
+    num_tags = len(tags)
+    has_code_block = 1 if "<code>" in body.lower() else 0
 
     hour = int(req.hour) if req.hour is not None else 12
     weekday = int(req.weekday) if req.weekday is not None else 2
 
-    # must match meta_cols order from training
-    meta = np.array([[hour, weekday, title_len, body_len, num_tags, has_code_block]], dtype=float)
+    q = quality_features(title, body)
+
+    feature_map = {
+        "hour": float(hour),
+        "weekday": float(weekday),
+        "title_len": float(title_len),
+        "body_len": float(body_len),
+        "num_tags": float(num_tags),
+        "has_code_block": float(has_code_block),
+        "stopword_rate": float(q["stopword_rate"]),
+        "vowel_ratio": float(q["vowel_ratio"]),
+        "long_token_rate": float(q["long_token_rate"]),
+    }
+
+    meta = np.array([[feature_map[c] for c in meta_cols]], dtype=float)
     return meta
+
 
 def is_valid_question(title: str, body: str, tags: list[str]) -> tuple[bool, list[str]]:
     reasons = []
@@ -133,37 +152,48 @@ def health():
 
 @app.post("/predict", response_model=PredictResponse)
 def predict(req: PredictRequest):
+    # 1) Validate (soft fail: we still return probabilities)
+    valid, reasons = is_valid_question(req.title, req.body, req.tags)
 
-    print("HAS_CODE:", "<code>" in (req.body or "").lower())
-    ok, reasons = is_valid_question(req.title, req.body, req.tags)
-    if not ok:
-        return {
-        "will_get_answered": False,
-        "probability_answered": 0.0,
-        "threshold": threshold,
-        "top_drivers": reasons
-        }
-
+    # 2) Build text + tag features
     text = clean_text((req.title or "") + " " + (req.body or ""))
     tags_str = tags_to_string(req.tags)
 
     X_text_tfidf = text_vectorizer.transform([text])
     X_tags_tfidf = tag_vectorizer.transform([tags_str])
 
-    meta = build_meta(req)
+    # 3) Build numeric meta features (must match training order)
+    meta = build_meta(req, meta_cols)
     meta_scaled = scaler.transform(meta)
     X_meta_sparse = csr_matrix(meta_scaled)
 
+    # 4) Combine and predict
     X = hstack([X_text_tfidf, X_tags_tfidf, X_meta_sparse])
 
     prob_answered = float(model.predict_proba(X)[0, 1])
-    will_get_answered = prob_answered >= threshold
 
+    # 5) Quality adjustment (your guardrail)
+    q = quality_features(req.title, req.body)
+    qscore = float(quality_score(q))
+    adjusted_prob = float(prob_answered * qscore)
+
+    # decision uses adjusted probability
+    will_get_answered = adjusted_prob >= threshold
+
+    # 6) Explanation (optional but recommended)
+    # If you haven't wired this yet, set drivers = []
     drivers = top_feature_contributions(X_text_tfidf, X_tags_tfidf, X_meta_sparse, k=5)
 
     return PredictResponse(
+        valid_input=bool(valid),
+        validation_reasons=reasons,
+
         will_get_answered=bool(will_get_answered),
         probability_answered=prob_answered,
-        threshold=threshold,
+        adjusted_probability_answered=adjusted_prob,
+        quality_score=qscore,
+
+        threshold=float(threshold),
         top_drivers=drivers
     )
+
