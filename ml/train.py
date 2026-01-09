@@ -42,8 +42,8 @@ def parse_tags(tag_str: str) -> str:
 
 df["tags_text"] = df["tags"].apply(parse_tags)
 
-df["title_len"] = df["title"].fillna("").astype(str).str.len()
-df["body_len"] = df["body"].fillna("").astype(str).str.len()
+df["title_len"] = df["title"].fillna("").astype(str).str.len().clip(upper=200)
+df["body_len"] = df["body"].fillna("").astype(str).str.len().clip(upper=2000)
 df["num_tags"] = df["tags_text"].apply(lambda s: 0 if not s else len(s.split()))
 df["has_code_block"] = df["body"].fillna("").astype(str).str.contains("<code>", regex=False).astype(int)
 
