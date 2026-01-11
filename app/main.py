@@ -197,3 +197,10 @@ def predict(req: PredictRequest):
         top_drivers=drivers
     )
 
+
+@app.post("/predict_batch", response_model=BatchPredictResponse)
+def predict_batch(req: BatchPredictRequest):
+    results = [predict(item) for item in req.items]
+    return BatchPredictResponse(items=results)
+
+
