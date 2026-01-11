@@ -20,3 +20,10 @@ class PredictResponse(BaseModel):
 
     threshold: float
     top_drivers: List[str]
+
+
+class BatchPredictRequest(BaseModel):
+    items: List[PredictRequest]
+
+class BatchPredictResponse(BaseModel):
+    items: List[PredictResponse]

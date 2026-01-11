@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.schemas import PredictRequest, PredictResponse
+from app.schemas import PredictRequest, PredictResponse, BatchPredictRequest, BatchPredictResponse
 import re
 import numpy as np
 import joblib
@@ -162,7 +162,7 @@ def predict(req: PredictRequest):
     X_text_tfidf = text_vectorizer.transform([text])
     X_tags_tfidf = tag_vectorizer.transform([tags_str])
 
-    # 3) Build numeric meta features (must match training order)
+    # 3) Build numeric meta features
     meta = build_meta(req, meta_cols)
     meta_scaled = scaler.transform(meta)
     X_meta_sparse = csr_matrix(meta_scaled)
@@ -172,7 +172,7 @@ def predict(req: PredictRequest):
 
     prob_answered = float(model.predict_proba(X)[0, 1])
 
-    # 5) Quality adjustment (your guardrail)
+    # 5) Quality adjustment (guardrail)
     q = quality_features(req.title, req.body)
     qscore = float(quality_score(q))
     adjusted_prob = float(prob_answered * qscore)
@@ -180,8 +180,6 @@ def predict(req: PredictRequest):
     # decision uses adjusted probability
     will_get_answered = adjusted_prob >= threshold
 
-    # 6) Explanation (optional but recommended)
-    # If you haven't wired this yet, set drivers = []
     drivers = top_feature_contributions(X_text_tfidf, X_tags_tfidf, X_meta_sparse, k=5)
 
     return PredictResponse(

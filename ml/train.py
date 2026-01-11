@@ -22,9 +22,7 @@ Artifacts saved:
 - ordered list of numeric meta columns
 """
 
-# =========================
 # Imports
-# =========================
 
 import pandas as pd
 import numpy as np
@@ -43,9 +41,7 @@ from ml.preprocess import clean_text
 from ml.quality import quality_features
 
 
-# =========================
 # Load data
-# =========================
 
 df = pd.read_csv("data/questions.csv")
 
@@ -53,9 +49,7 @@ df = pd.read_csv("data/questions.csv")
 df["answered"] = (df["answer_count"] > 0).astype(int)
 
 
-# =========================
 # Text preprocessing
-# =========================
 
 # Safe concatenation (handles NaNs)
 df["text"] = (
@@ -67,18 +61,14 @@ df["text"] = (
 df["clean_text"] = df["text"].apply(clean_text)
 
 
-# =========================
 # Time features (posting-time)
-# =========================
 
 df["creation_date"] = pd.to_datetime(df["creation_date"], errors="coerce")
 df["hour"] = df["creation_date"].dt.hour.fillna(0).astype(int)
 df["weekday"] = df["creation_date"].dt.weekday.fillna(0).astype(int)
 
 
-# =========================
 # Tag preprocessing
-# =========================
 
 def parse_tags(tag_str: str) -> str:
     """
@@ -97,9 +87,7 @@ def parse_tags(tag_str: str) -> str:
 df["tags_text"] = df["tags"].apply(parse_tags)
 
 
-# =========================
 # Clarity / effort features (posting-time)
-# =========================
 
 # Lengths are capped to avoid spammy inflation
 df["title_len"] = df["title"].fillna("").astype(str).str.len().clip(upper=200)
@@ -118,9 +106,7 @@ df["has_code_block"] = (
 )
 
 
-# =========================
 # Quality heuristics (posting-time)
-# =========================
 
 # stopword_rate, vowel_ratio, long_token_rate
 quality = df.apply(
@@ -134,9 +120,7 @@ quality = df.apply(
 df = pd.concat([df, pd.DataFrame(list(quality))], axis=1)
 
 
-# =========================
 # Define model inputs
-# =========================
 
 X_text = df["clean_text"]
 X_tags = df["tags_text"]
@@ -157,9 +141,7 @@ X_meta = df[meta_num_cols].copy()
 y = df["answered"]
 
 
-# =========================
 # Train / test split
-# =========================
 
 (
     X_text_train,
@@ -181,9 +163,7 @@ y = df["answered"]
 )
 
 
-# =========================
 # Vectorization
-# =========================
 
 # Text TF-IDF
 text_vectorizer = TfidfVectorizer(
@@ -210,9 +190,7 @@ X_tags_train_tfidf = tag_vectorizer.fit_transform(X_tags_train)
 X_tags_test_tfidf = tag_vectorizer.transform(X_tags_test)
 
 
-# =========================
 # Scale numeric meta features
-# =========================
 
 scaler = StandardScaler()
 X_meta_train_scaled = scaler.fit_transform(X_meta_train)
@@ -222,9 +200,7 @@ X_meta_train_sparse = csr_matrix(X_meta_train_scaled)
 X_meta_test_sparse = csr_matrix(X_meta_test_scaled)
 
 
-# =========================
 # Combine all features
-# =========================
 
 X_train_final = hstack([
     X_text_train_tfidf,
@@ -239,9 +215,7 @@ X_test_final = hstack([
 ])
 
 
-# =========================
 # Train model
-# =========================
 
 model = LogisticRegression(
     max_iter=2000,
@@ -251,9 +225,7 @@ model = LogisticRegression(
 model.fit(X_train_final, y_train)
 
 
-# =========================
 # Evaluate (threshold = 0.5 for reporting)
-# =========================
 
 y_probs = model.predict_proba(X_test_final)[:, 1]
 y_pred = (y_probs >= 0.5).astype(int)
@@ -262,9 +234,7 @@ print(classification_report(y_test, y_pred))
 print(confusion_matrix(y_test, y_pred))
 
 
-# =========================
 # Interpretability
-# =========================
 
 coefs = model.coef_[0]
 
@@ -296,9 +266,7 @@ for name, w in zip(meta_num_cols, meta_coefs):
     print(f"{name:18s} {w: .4f}")
 
 
-# =========================
 # Save artifacts
-# =========================
 
 ARTIFACT_DIR = Path("artifacts")
 ARTIFACT_DIR.mkdir(exist_ok=True)
